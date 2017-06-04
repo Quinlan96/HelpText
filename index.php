@@ -1,17 +1,19 @@
 <?php
 
 $method = $_SERVER['REQUEST_METHOD'];
-$body = "Robert Quinlan, 4068, VAKS";
-$number = "61111111111";
 
 if($method == "GET") {
-	parse($body);
+	parse();
 }
 
-function parse($body) {
+function parse() {
+	$body = "Robert Quinlan, 4068, Shelter";
 	$conn = new PDO("mysql:host=127.0.0.1;dbname=HelpText", "root", "Shylah6525");
 	preg_match("/\d{4}/", $body, $matches);
 	$postcode = $matches[0];
+
+	/*$from = $_POST['from'];
+	$to = $_POST['to'];*/
 
 	preg_match("/(food|shelter|medical)/i", $body, $matches);
 	$serviceType = strtolower($matches[0]);
@@ -33,7 +35,12 @@ function parse($body) {
 
 	$services = findServices($conn, $coords, $serviceType, $searchTypes);
 
-	$messageBody = "Hi John, here are some accommodation options near you:";
+	for($i = 0; $i < count($services); $i++) {
+		$body = $services[$i]['name'] . "\r\n" . $services[$i]['phone'] . "\r\n" . $services[$i]['address'];
+		echo $body;
+	}
+
+	/*sendSMS($to, $from, $body);*/
 }
 
 function getCoords($conn, $postcode) {
@@ -52,8 +59,6 @@ function getCoords($conn, $postcode) {
 function findServices($conn, $coords, $serviceType, $searchTypes) {
 	$sql = "SELECT * FROM services ";
 
-	echo $search;
-
 	if($serviceType) {
 		$sql .= "WHERE ";
 		for($i = 0; $i < count($searchTypes); $i++) {
@@ -64,15 +69,31 @@ function findServices($conn, $coords, $serviceType, $searchTypes) {
 		}
 	}
 
-	$sql .= "ORDER BY (POW((Longitude-:lon),2) + POW((Latitude-:lat),2)) LIMIT 5";
+	$sql .= "ORDER BY (POW((Longitude-:lon),2) + POW((Latitude-:lat),2)) LIMIT 3";
 
 
 	$result  = $conn->prepare($sql);
 	$result->execute(['lat' => $coords[0], 'lon' => $coords[1]]);
 
+	$services = [];
 	while($row = $result->fetch()) {
-		echo "<p>" . $row['Location_Name'] . ", " . $row['Location_Postcode'] . "</p>";
+		array_push($services, ['name' => $row['Location_Name'], 'phone' => $row['Service_Phone'], 'address' => $row['Location_Address_1'] . ", " . ucwords(strtolower($row['Location_Suburb']))]);
 	}
+	return $services;
+}
+
+function sendSMS($from, $to, $body) {
+	$ch = curl_init();
+
+	curl_setopt($ch, CURLOPT_URL, "https://api-mapper.clicksend.com/http/v2/send.php");
+	curl_setopt($ch, CURLOPT_POST, 1);
+	curl_setopt($ch, CURLOPT_POSTFIELDS, "method=http&username=Quinlan96&key=34ACB9B5-3DD0-DED5-7DB9-6AA79218F907&to=" . $from . "&senderid=" . $to . "&message=" . $body);
+
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+	$server_output = curl_exec($ch);
+
+	curl_close($ch);
 }
 
 ?>
