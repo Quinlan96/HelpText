@@ -2,45 +2,50 @@
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-if($method == "GET") {
+if($method == "POST") {
 	parse();
 }
 
 function parse() {
-	$body = "Robert Quinlan, 4068, Shelter";
 	$conn = new PDO("mysql:host=127.0.0.1;dbname=HelpText", "root", "Shylah6525");
+
+	$to = $_POST['to'];
+	$from = $_POST['from'];
+	$body = $_POST['body'];
+
 	preg_match("/\d{4}/", $body, $matches);
 	$postcode = $matches[0];
-
-	/*$from = $_POST['from'];
-	$to = $_POST['to'];*/
 
 	preg_match("/(food|shelter|medical)/i", $body, $matches);
 	$serviceType = strtolower($matches[0]);
 
-	$searchTypes = [];
+	if($serviceType && $postcode) {
+		$searchTypes = [];
 
-	switch($serviceType) {
-		case 'food':
-			array_push($searchTypes, "Food Vans and Mobile Kitchens", "Meals on Wheels");
-			break;
-		case 'shelter':
-			array_push($searchTypes, "Crisis & Emergency Accommodation", "Youth Accommodation Services");
-			break;
-		case 'medical':
-			array_push($searchTypes, "Abuse & Assault Services", "General Crisis and Emergency Services", "General Health Services", "General Practice/Doctor", "Health Screening Services", "Mental Health Services", "General Welfare & Support Services", "Hospitals", "Suicide & Self Harm Information");
+		switch($serviceType) {
+			case 'food':
+				array_push($searchTypes, "Food Vans and Mobile Kitchens", "Meals on Wheels");
+				break;
+			case 'shelter':
+				array_push($searchTypes, "Crisis & Emergency Accommodation", "Youth Accommodation Services");
+				break;
+			case 'medical':
+				array_push($searchTypes, "Abuse & Assault Services", "General Crisis and Emergency Services", "General Health Services", "General Practice/Doctor", "Health Screening Services", "Mental Health Services", "General Welfare & Support Services", "Hospitals", "Suicide & Self Harm Information");
+		}
+
+		$coords = getCoords($conn, $postcode);
+
+		$services = findServices($conn, $coords, $serviceType, $searchTypes);
+
+		$body = "Services near " . $postcode . " include:\r\n\r\n";
+		for($i = 0; $i < count($services); $i++) {
+			$body .= $services[$i]['name'] . "\r\n" . $services[$i]['phone'] . "\r\n" . $services[$i]['address'] . "\r\n\r\n";
+		}
+	} else {
+		$body = "Hi! I want to help. Please tell me your name, postcode and the service you are looking for:\r\n-Food\r\n-Shelter\r\n-Medical";
 	}
 
-	$coords = getCoords($conn, $postcode);
-
-	$services = findServices($conn, $coords, $serviceType, $searchTypes);
-
-	for($i = 0; $i < count($services); $i++) {
-		$body = $services[$i]['name'] . "\r\n" . $services[$i]['phone'] . "\r\n" . $services[$i]['address'];
-		echo $body;
-	}
-
-	/*sendSMS($to, $from, $body);*/
+	sendSMS($to, $from, $body);
 }
 
 function getCoords($conn, $postcode) {
@@ -69,7 +74,7 @@ function findServices($conn, $coords, $serviceType, $searchTypes) {
 		}
 	}
 
-	$sql .= "ORDER BY (POW((Longitude-:lon),2) + POW((Latitude-:lat),2)) LIMIT 3";
+	$sql .= "ORDER BY (POW((Longitude-:lon),2) + POW((Latitude-:lat),2)) LIMIT 5";
 
 
 	$result  = $conn->prepare($sql);
@@ -77,12 +82,13 @@ function findServices($conn, $coords, $serviceType, $searchTypes) {
 
 	$services = [];
 	while($row = $result->fetch()) {
-		array_push($services, ['name' => $row['Location_Name'], 'phone' => $row['Service_Phone'], 'address' => $row['Location_Address_1'] . ", " . ucwords(strtolower($row['Location_Suburb']))]);
+		array_push($services, ['name' => $row['Location_Name'], 'phone' => $row['Service_Phone'], 'address' => $row['Location_Address_1']]);
 	}
+
 	return $services;
 }
 
-function sendSMS($from, $to, $body) {
+function sendSMS($to, $from, $body) {
 	$ch = curl_init();
 
 	curl_setopt($ch, CURLOPT_URL, "https://api-mapper.clicksend.com/http/v2/send.php");
